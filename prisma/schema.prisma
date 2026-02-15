@@ -1,0 +1,114 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- 1. USER & AUTH ---
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  phone     String   @unique // Login pakai No HP
+  password  String
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+  orders    Order[]
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+// --- 2. CATALOG & AI ---
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  slug        String   @unique // Untuk SEO: /product/ikan-tongkol
+  description String?
+  pricePerKg  Int
+  imageUrl    String?
+  category    String
+  
+  // Fitur Kunci: AI Gemini
+  // Resep disimpan di sini setelah digenerate admin
+  recipeText  String?  @db.Text 
+  
+  isActive    Boolean  @default(true)
+  orderItems  OrderItem[]
+}
+
+// --- 3. OPERATIONAL (The Engine) ---
+model Batch {
+  id           Int       @id @default(autoincrement())
+  name         String    // "Batch Sabtu 14 Feb"
+  cutOffTime   DateTime  // Batas akhir order
+  deliveryDate DateTime  // Tanggal kirim
+  status       BatchStatus @default(OPEN)
+  orders       Order[]
+}
+
+enum BatchStatus {
+  OPEN
+  CLOSED
+  COMPLETED
+}
+
+model Zone {
+  id           Int     @id @default(autoincrement())
+  name         String  // "Cisaat", "Sukaraja"
+  shippingCost Int
+  orders       Order[]
+}
+
+// --- 4. TRANSACTION & LOGISTICS ---
+model Order {
+  id            Int         @id @default(autoincrement())
+  
+  // Relasi ke User
+  userId        Int
+  user          User        @relation(fields: [userId], references: [id])
+  
+  // Relasi Penting untuk Logistik!
+  batchId       Int
+  batch         Batch       @relation(fields: [batchId], references: [id])
+  
+  zoneId        Int
+  zone          Zone        @relation(fields: [zoneId], references: [id])
+  
+  totalAmount   Int
+  status        OrderStatus @default(PENDING)
+  paymentProof  String?     // URL gambar bukti transfer
+  
+  createdAt     DateTime    @default(now())
+  items         OrderItem[]
+
+  // Indexing agar rekap logistik cepat
+  @@index([batchId])
+  @@index([zoneId])
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PACKED
+  ON_DELIVERY
+  COMPLETED
+  CANCELLED
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  orderId   Int
+  order     Order   @relation(fields: [orderId], references: [id])
+  productId Int
+  product   Product @relation(fields: [productId], references: [id])
+  
+  quantity  Float   // Berat dalam Kg (bisa 0.5 kg)
+  subtotal  Int
+}
