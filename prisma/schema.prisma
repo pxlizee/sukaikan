@@ -1,114 +1,89 @@
-// prisma/schema.prisma
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql" // Pastikan ini sesuai provider database kamu (Neon biasanya postgresql)
   url      = env("DATABASE_URL")
 }
 
-// --- 1. USER & AUTH ---
+// --- 1. MODEL USER (AKUN) ---
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  phone     String   @unique // Login pakai No HP
-  password  String
-  role      Role     @default(CUSTOMER)
-  createdAt DateTime @default(now())
-  orders    Order[]
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String    // Password akan di-hash (dienkripsi)
+  role          String    @default("USER") // Bisa "ADMIN" atau "USER"
+  image         String?   // Foto profil (opsional)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relasi: Satu User bisa punya banyak Order
+  orders        Order[]
 }
 
-enum Role {
-  ADMIN
-  CUSTOMER
-}
-
-// --- 2. CATALOG & AI ---
+// --- 2. MODEL PRODUCT (IKAN) ---
 model Product {
-  id          Int      @id @default(autoincrement())
+  id          String   @id @default(cuid())
   name        String
-  slug        String   @unique // Untuk SEO: /product/ikan-tongkol
+  price       Int      // Harga per item/kg
+  category    String   // Laut, Tawar, dll
   description String?
-  pricePerKg  Int
   imageUrl    String?
-  category    String
+  isAvailable Boolean  @default(true) // Fitur stok kosong/ada
   
-  // Fitur Kunci: AI Gemini
-  // Resep disimpan di sini setelah digenerate admin
-  recipeText  String?  @db.Text 
-  
-  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relasi ke item pesanan
   orderItems  OrderItem[]
 }
 
-// --- 3. OPERATIONAL (The Engine) ---
-model Batch {
-  id           Int       @id @default(autoincrement())
-  name         String    // "Batch Sabtu 14 Feb"
-  cutOffTime   DateTime  // Batas akhir order
-  deliveryDate DateTime  // Tanggal kirim
-  status       BatchStatus @default(OPEN)
-  orders       Order[]
-}
-
-enum BatchStatus {
-  OPEN
-  CLOSED
-  COMPLETED
-}
-
-model Zone {
-  id           Int     @id @default(autoincrement())
-  name         String  // "Cisaat", "Sukaraja"
-  shippingCost Int
-  orders       Order[]
-}
-
-// --- 4. TRANSACTION & LOGISTICS ---
+// --- 3. MODEL ORDER (PESANAN) ---
 model Order {
-  id            Int         @id @default(autoincrement())
+  id            String      @id @default(cuid())
   
-  // Relasi ke User
-  userId        Int
-  user          User        @relation(fields: [userId], references: [id])
+  // Data Pengiriman (Bisa beda dengan nama akun)
+  customerName  String
+  customerPhone String
+  address       String
   
-  // Relasi Penting untuk Logistik!
-  batchId       Int
-  batch         Batch       @relation(fields: [batchId], references: [id])
+  // Data Keuangan
+  totalPrice    Int
+  status        String      @default("PENDING") // PENDING -> PAID -> PROCESSED -> SHIPPED -> COMPLETED
   
-  zoneId        Int
-  zone          Zone        @relation(fields: [zoneId], references: [id])
-  
-  totalAmount   Int
-  status        OrderStatus @default(PENDING)
-  paymentProof  String?     // URL gambar bukti transfer
+  // Persiapan Payment Gateway (Midtrans)
+  snapToken     String?     // Token transaksi dari Midtrans
+  paymentUrl    String?     // Link pembayaran (opsional)
+
+  // Relasi ke User (Wajib Login)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relasi ke Item
+  items         OrderItem[]
   
   createdAt     DateTime    @default(now())
-  items         OrderItem[]
-
-  // Indexing agar rekap logistik cepat
-  @@index([batchId])
-  @@index([zoneId])
+  updatedAt     DateTime    @updatedAt
 }
 
-enum OrderStatus {
-  PENDING
-  PAID
-  PACKED
-  ON_DELIVERY
-  COMPLETED
-  CANCELLED
-}
-
+// --- 4. MODEL ORDER ITEM (DETAIL BELANJAAN) ---
 model OrderItem {
-  id        Int     @id @default(autoincrement())
-  orderId   Int
-  order     Order   @relation(fields: [orderId], references: [id])
-  productId Int
-  product   Product @relation(fields: [productId], references: [id])
+  id          String   @id @default(cuid())
   
-  quantity  Float   // Berat dalam Kg (bisa 0.5 kg)
-  subtotal  Int
+  // Relasi ke Order Utama
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  // Relasi ke Produk (Disimpan ID-nya saja)
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  
+  // Snapshot Data (Penting agar histori harga tidak berubah meski harga produk naik)
+  productName String
+  price       Int      // Harga saat dibeli
+  quantity    Int
 }

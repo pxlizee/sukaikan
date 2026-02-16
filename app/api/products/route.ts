@@ -1,14 +1,11 @@
-import { prisma } from '../../../lib/prisma';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { NextResponse } from 'next/server';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
-// --- FUNGSI AMBIL SEMUA PRODUK (GET) ---
+// --- FUNGSI GET (Untuk nampilin data di tabel) ---
 export async function GET() {
   try {
     const products = await prisma.product.findMany({
-      orderBy: { id: 'desc' },
+      orderBy: { id: 'desc' }
     });
     return NextResponse.json(products);
   } catch (error) {
@@ -16,36 +13,25 @@ export async function GET() {
   }
 }
 
-// --- FUNGSI TAMBAH PRODUK (POST) ---
-export async function POST(request: Request) {
+// --- FUNGSI POST (Untuk tambah produk baru) ---
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
+    const body = await req.json();
     const { name, price, category, description, imageUrl } = body;
-
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `Buatkan resep masakan pendek untuk: ${name}. Bahasa Indonesia.`;
-    
-    let aiRecipe = "Resep gagal dibuat.";
-    try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      aiRecipe = response.text();
-    } catch (e) { console.error("AI Error"); }
 
     const newProduct = await prisma.product.create({
       data: {
         name,
-        slug: name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, ''),
-        pricePerKg: parseInt(price),
+        price: parseInt(price),
         category,
         description,
         imageUrl,
-        recipeText: aiRecipe,
+        recipeText: "" 
       },
     });
 
-    return NextResponse.json({ success: true, data: newProduct });
+    return NextResponse.json({ success: true, data: newProduct }, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ success: false, error: "Gagal simpan" }, { status: 500 });
+    return NextResponse.json({ error: "Gagal simpan produk" }, { status: 500 });
   }
 }
