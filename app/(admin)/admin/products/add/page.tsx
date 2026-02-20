@@ -57,8 +57,7 @@ export default function AddProductPage() {
 
         <div className="bg-white rounded-[40px] p-8 md:p-12 shadow-sm border border-slate-200">
           <div className="mb-8">
-            <h1 className="text-3xl font-black text-slate-900 tracking-tighter">Tambah Ikan (Mode Link)</h1>
-            <p className="text-slate-400 font-medium text-sm">Tempel link gambar dari internet untuk hasil instan.</p>
+            <h1 className="text-3xl font-black text-slate-900 tracking-tighter">Tambah Ikan</h1>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">

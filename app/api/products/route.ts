@@ -26,7 +26,6 @@ export async function POST(req: Request) {
         category,
         description,
         imageUrl,
-        recipeText: "" 
       },
     });
 

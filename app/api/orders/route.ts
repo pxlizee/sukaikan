@@ -1,45 +1,34 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getServerSession } from "next-auth"; // <--- INI YANG HILANG TADI
-import { authOptions } from "@/lib/auth"; // Pastikan ini juga di-import
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+
+//@ts-ignore
+import snap from "midtrans-client";
 
 export async function GET(req: Request) {
   try {
-    // 1. Cek User Login
     const session = await getServerSession(authOptions);
-    
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    // 2. Ambil Pesanan dari Database
     const orders = await prisma.order.findMany({
-      where: {
-        userId: (session.user as any).id, // Hanya ambil punya user yang login
-      },
-      include: {
-        items: true, // Tampilkan detail ikan yang dibeli
-      },
-      orderBy: {
-        createdAt: 'desc', // Urutkan dari yang terbaru
-      }
+      where: { userId: (session.user as any).id },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' }
     });
 
     return NextResponse.json(orders);
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Gagal mengambil data" }, { status: 500 });
+    return NextResponse.json({ error: "Gagal memuat data" }, { status: 500 });
   }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    
-    if (!body.userId) {
-      return NextResponse.json({ error: "User ID wajib ada (harus login)" }, { status: 401 });
-    }
+    if (!body.userId) return NextResponse.json({ error: "Harus login dulu" }, { status: 401 });
 
+    // 1. Simpan pesanan ke Database
     const order = await prisma.order.create({
       data: {
         customerName: body.customerName,
@@ -59,7 +48,38 @@ export async function POST(req: Request) {
       }
     });
 
-    return NextResponse.json({ success: true, orderId: order.id });
+    let snapToken = null;
+
+    // 2. Cek apakah Server Key Midtrans ada isinya di .env
+    if (process.env.MIDTRANS_SERVER_KEY && process.env.MIDTRANS_SERVER_KEY !== "") {
+      const snapClient = new snap.Snap({
+        isProduction: false,
+        serverKey: process.env.MIDTRANS_SERVER_KEY,
+        clientKey: process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY || "",
+      });
+
+      const parameter = {
+        transaction_details: {
+          order_id: order.id,
+          gross_amount: body.total,
+        },
+        customer_details: {
+          first_name: body.customerName,
+          phone: body.customerPhone,
+        },
+      };
+
+      const transaction = await snapClient.createTransaction(parameter);
+      snapToken = transaction.token;
+    }
+
+    // 3. Kembalikan respons. Kalau snapToken null, frontend akan masuk mode simulasi.
+    return NextResponse.json({ 
+      success: true, 
+      orderId: order.id, 
+      snapToken: snapToken 
+    });
+
   } catch (error) {
     console.error("Order Error:", error);
     return NextResponse.json({ error: "Gagal membuat pesanan" }, { status: 500 });

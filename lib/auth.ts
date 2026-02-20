@@ -4,12 +4,6 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcrypt";
 
 export const authOptions: NextAuthOptions = {
-  session: {
-    strategy: "jwt",
-  },
-  pages: {
-    signIn: "/login",
-  },
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -18,17 +12,27 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
 
+        // 1. Cari user berdasarkan email
         const user = await prisma.user.findUnique({
           where: { email: credentials.email }
         });
 
-        if (!user) return null;
+        if (!user) {
+          return null;
+        }
 
+        // 2. Cocokkan password yang diinput dengan yang di-hash di database
         const passwordMatch = await bcrypt.compare(credentials.password, user.password);
-        if (!passwordMatch) return null;
 
+        if (!passwordMatch) {
+          return null; // Kalau salah, tolak login (401)
+        }
+
+        // 3. Kalau sukses, kembalikan data user
         return {
           id: user.id,
           name: user.name,
@@ -38,6 +42,9 @@ export const authOptions: NextAuthOptions = {
       }
     })
   ],
+  session: {
+    strategy: "jwt",
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -53,5 +60,9 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     }
-  }
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+  pages: {
+    signIn: "/login",
+  },
 };
